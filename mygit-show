@@ -1,0 +1,42 @@
+#!/usr/bin/python3
+# mygit-show
+# Written by z5611273 on 7/8/2025
+
+import os
+import sys
+import re
+
+if not os.path.exists('.mygit'):
+  print('mygit-show: error: mygit repository directory .mygit not found', file=sys.stderr)
+  exit(1)
+
+if len(sys.argv) != 2 or not re.search(r':', sys.argv[1]):
+  print('usage: mygit-show <commit>:<filename>', file=sys.stderr)
+  exit(1)
+
+filename = sys.argv[1].split(':')[-1]
+if not re.search(r'^\w[-\w\.]*$', filename):
+  print(f"mygit-show: error: invalid filename '{filename}'", file=sys.stderr)
+  exit(1)
+
+firstchar = sys.argv[1][:1]
+if firstchar == ':':
+  if not os.path.exists(f'.mygit/index-storage/{filename}'):
+    print(f"mygit-show: error: '{filename}' not found in index", file=sys.stderr)
+    exit(1)
+  with open(f'.mygit/index-storage/{filename}', 'r') as file:
+    content = file.read()
+    print(content, end='')
+else:
+  commit = sys.argv[1].split(':')[0]
+  if not os.path.exists(f'.mygit/commits/{commit}'):
+    print(f"mygit-show: error: unknown commit '{commit}'", file=sys.stderr)
+    exit(1)
+  if not os.path.exists(f'.mygit/commits/{commit}/{filename}'):
+    print(f"mygit-show: error: '{filename}' not found in commit {commit}", file=sys.stderr)
+    exit(1)
+  with open(f'.mygit/commits/{commit}/{filename}', 'r') as file:
+    content = file.read()
+    print(content, end='')
+
+exit(0)

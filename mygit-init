@@ -1,0 +1,21 @@
+#!/usr/bin/python3
+# mygit-init
+# Written by z5611273 on 5/8/2025
+
+import os
+import sys
+try:
+  os.mkdir('.mygit')
+except FileExistsError:
+  print('mygit-init: error: .mygit already exists', file=sys.stderr)
+  exit (1)
+
+# create directories and files within .mygit
+os.mkdir('.mygit/index-storage')
+os.mkdir('.mygit/branches')
+open('.mygit/tracked', 'w').close()
+
+print('Initialized empty mygit repository in .mygit')
+exit (0)
+
+

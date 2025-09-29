@@ -1,0 +1,110 @@
+#!/usr/bin/python3
+# mygit-commit
+# Written by z5611273 on 6/8/2025
+
+import os
+import sys
+import re
+import filecmp
+import argparse
+
+def git_add():
+  for filename in os.listdir('.mygit/index-storage'):
+    if (os.path.exists(f'.mygit/index-storage/{filename}')
+        and (filecmp.cmp(f'{filename}', f'.mygit/index-storage/{filename}', shallow=False))):
+      continue
+    elif os.path.exists(f'.mygit/commits'):
+      latestCommit = max(os.listdir(f'.mygit/commits'), key=int)
+      if (os.path.exists(f'.mygit/commits/{latestCommit}/{filename}')
+          and filecmp.cmp(f'{filename}',
+                            f'.mygit/commits/{latestCommit}/{filename}', shallow=False)):
+        continue
+
+    with open(filename, "rb") as source:
+      with open(f".mygit/index-storage/{filename}", "wb") as target:
+        target.write(source.read())
+    
+    if os.path.exists('.mygit/modified'):
+      with open('.mygit/modified', 'r') as file:
+        content = file.read()
+      if not re.search(rf'\b{filename}\b', content):
+        with open('.mygit/modified', 'a') as file:
+          file.write(f'{filename}\n')
+    else:
+      with open('.mygit/modified', 'w') as file:
+        file.write(f'{filename}\n')
+  return
+
+class ArgumentParser(argparse.ArgumentParser):
+  def error(self, message):
+    self.print_usage(sys.stderr)
+    exit(1)
+
+usageString = 'mygit-commit [-a] -m commit-message'
+parser = ArgumentParser(add_help=False, exit_on_error=False, usage=usageString)
+parser.add_argument('-a', '--add', action='store_true')
+parser.add_argument('-m', '--message', required=True)
+args = parser.parse_args()
+
+if not os.path.exists('.mygit'):
+  print('mygit-commit: error: mygit repository directory .mygit not found', file=sys.stderr)
+  exit(1)
+
+# change to reflect modified file
+if not os.path.exists('.mygit/modified'):
+  print('nothing to commit')
+  exit(0)
+with open('.mygit/modified', 'r') as file:
+  content = file.read()
+if content == '' and not sys.argv[1] == '-a':
+  print('nothing to commit')
+  exit(0)
+
+try:
+  os.mkdir('.mygit/commits')
+  os.mkdir('.mygit/commit-messages')
+  os.mkdir('.mygit/commit-pointers')
+except FileExistsError:
+  pass
+
+commitId = len(os.listdir('.mygit/commits'))
+os.mkdir(f'.mygit/commits/{commitId}')
+
+if commitId == 0:
+  with open('.mygit/branches/trunk', 'w') as file:
+    file.write('0')
+  with open('.mygit/HEAD', 'w') as file:
+    file.write('trunk')
+else:
+  with open('.mygit/HEAD', 'r') as file:
+    branch = file.read()
+  with open(f'.mygit/branches/{branch}', 'r') as file:
+    prevCommitId = file.read()
+  with open(f'.mygit/branches/{branch}', 'w') as file:
+    file.write(f'{commitId}')
+
+if args.add:
+  git_add()
+
+for filename in os.listdir('.mygit/index-storage'):
+  src = f'.mygit/index-storage/{filename}'
+  dest = f'.mygit/commits/{commitId}/{filename}'
+
+  if os.path.isdir(src):
+    continue
+
+  with open(src, 'rb') as sourceFile:
+    with open(dest, 'wb') as destFile:
+      destFile.write(sourceFile.read())
+
+with open(f'.mygit/commit-messages/{commitId}', 'w') as file:
+  file.write(f'{args.message}\n')
+if commitId != 0:
+  with open(f'.mygit/commit-pointers/{commitId}', 'w') as file:
+    file.write(f'{prevCommitId}\n')
+
+open('.mygit/modified', 'w').close()
+
+print(f'Committed as commit {commitId}')
+exit(0)
+

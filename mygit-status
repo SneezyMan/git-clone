@@ -1,0 +1,72 @@
+#!/usr/bin/python3
+# mygit-status
+# Written by z5611273 on 8/8/2025
+
+import sys
+import os
+import filecmp
+
+if not os.path.exists('.mygit'):
+  print("mygit-status: error: mygit repository directory .mygit not found", file=sys.stderr)
+  exit(1)
+
+if len(sys.argv) != 1:
+  print('usage: mygit-status', file=sys.stderr)
+  exit(1)
+
+if os.path.exists('.mygit/commits'):
+  hasCommit = True
+else:
+  hasCommit = False
+
+local = set(os.listdir())
+index = set(os.listdir('.mygit/index-storage'))
+
+if hasCommit:
+  with open('.mygit/HEAD', 'r') as file:
+    branch = file.read()
+  with open(f'.mygit/branches/{branch}', 'r') as file:
+    latestCommit = file.read()
+  repository = set(os.listdir(f'.mygit/commits/{latestCommit}'))
+else:
+  repository = set()
+allFilenames = sorted(local | index | repository)
+
+for filename in allFilenames:
+  if os.path.exists(filename) and not os.path.isfile(filename):
+    continue
+  
+  if filename in local and filename in index and filename in repository:
+    if (os.path.exists(f'.mygit/index-storage/{filename}') 
+        and os.path.exists(f'.mygit/commits/{latestCommit}/{filename}')
+        and os.path.exists(f'{filename}')):
+      if (not filecmp.cmp(f'{filename}', f'.mygit/index-storage/{filename}', shallow=False)
+          and not filecmp.cmp(f'.mygit/index-storage/{filename}', f'.mygit/commits/{latestCommit}/{filename}', shallow=False)):
+        print(f'{filename} - file changed, different changes staged for commit')
+      elif not filecmp.cmp(f'{filename}', f'.mygit/index-storage/{filename}', shallow=False):
+        print(f'{filename} - file changed, changes not staged for commit')
+      elif (filecmp.cmp(f'{filename}', f'.mygit/index-storage/{filename}', shallow=False)
+            and not filecmp.cmp(f'.mygit/index-storage/{filename}', f'.mygit/commits/{latestCommit}/{filename}', shallow=False)):
+        print(f'{filename} - file changed, changes staged for commit')
+      else:
+        print(f'{filename} - same as repo')
+  elif filename in local and filename not in index and filename not in repository:
+    print(f'{filename} - untracked')
+  elif filename in local and filename in index and filename not in repository:
+    if (os.path.exists(f'{filename}') and os.path.exists(f'.mygit/index-storage/{filename}')
+        and filecmp.cmp(f'{filename}', f'.mygit/index-storage/{filename}', shallow=False)):
+      print(f'{filename} - added to index')
+    else:
+      print(f'{filename} - added to index, file changed')
+  elif filename in local and filename not in index and filename in repository:
+    print(f'{filename} - deleted from index')
+  elif filename not in local and filename not in index and filename in repository:
+    print(f'{filename} - file deleted, deleted from index')
+  elif filename not in local and filename in index and filename in repository:
+    if not filecmp.cmp(f'.mygit/index-storage/{filename}', f'.mygit/commits/{latestCommit}/{filename}', shallow=False):
+      print(f'{filename} - file deleted, changes staged for commit')
+    else:
+      print(f'{filename} - file deleted')
+  elif filename not in local and filename in index and filename not in repository:
+    print(f'{filename} - added to index, file deleted')
+

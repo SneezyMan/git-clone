@@ -1,0 +1,93 @@
+#!/usr/bin/python3
+# mygit-branch
+# Written by z5611273 on 9/8/2025
+
+import os
+import sys
+import argparse
+import re
+
+if not os.path.exists('.mygit'):
+  print('mygit-branch: error: mygit repository directory .mygit not found', file=sys.stderr)
+  exit(1)
+
+if not os.path.exists('.mygit/commits'):
+  print('mygit-branch: error: this command can not be run until after the first commit', file=sys.stderr)
+  exit(1)
+
+class ArgumentParser(argparse.ArgumentParser):
+  def error(self, message):
+    self.print_usage(sys.stderr)
+    exit(1)
+
+usageString = 'usage: mygit-branch [-d] <branch>'
+parser = ArgumentParser(add_help=False, exit_on_error=False, usage=usageString)
+parser.add_argument('-d', '--delete', action='store_true')
+parser.add_argument('branch', nargs='?', default=None)
+args = parser.parse_args()
+
+# No branch name provided
+if args.branch is None:
+  if args.delete:
+    print('mygit-branch: error: branch name required', file=sys.stderr)
+    exit(1)
+
+  branches = sorted(os.listdir('.mygit/branches'))
+  for branch in branches:
+    print(branch)
+  exit(0)
+
+result = re.search(r'^\w[-\w\.]*$', args.branch)
+if (result == None):
+  print(f"mygit-branch: error: invalid branch name '{args.branch}'", file=sys.stderr)
+  exit(1)
+if args.delete:
+  if os.path.exists(f'.mygit/branches/{args.branch}'):
+    if args.branch == 'trunk':
+      print("mygit-branch: error: can not delete branch 'trunk': default branch", file=sys.stderr)
+      exit(1)
+
+    with open(f'.mygit/branches/{args.branch}') as file:
+      targetCommit = int(file.read())
+    if targetCommit != 0:
+      targetAncestors = [targetCommit]
+      commitPointer = targetCommit
+      while commitPointer != 0:
+        with open(f'.mygit/commit-pointers/{commitPointer}', 'r') as file:
+          commitPointer = int(file.read())
+        targetAncestors.append(commitPointer)
+
+      with open('.mygit/HEAD', 'r') as file:
+        currentBranch = file.read()
+      with open(f'.mygit/branches/{currentBranch}', 'r') as file:
+        currentCommit = int(file.read())
+      currentAncestors = [currentCommit]
+      commitPointer = currentCommit
+      while commitPointer != 0:
+        with open(f'.mygit/commit-pointers/{commitPointer}', 'r') as file:
+          commitPointer = int(file.read())
+          currentAncestors.append(commitPointer)
+
+      commonCommits = [num for num in targetAncestors if num in currentAncestors]
+      commonAncestor = max(commonCommits)
+      if targetCommit != commonAncestor:
+        print(f"mygit-branch: error: branch '{args.branch}' has unmerged changes", file=sys.stderr)
+        exit(1)
+    
+    os.remove(f'.mygit/branches/{args.branch}')
+    print(f"Deleted branch '{args.branch}'")
+  else:
+    print(f"mygit-branch: error: branch '{args.branch}' doesn't exist", file=sys.stderr)
+    exit(1)
+else:
+  if os.path.exists(f'.mygit/branches/{args.branch}'):
+    print(f"mygit-branch: error: branch '{args.branch}' already exists", file=sys.stderr)
+    exit(1)
+  else:
+    with open('.mygit/HEAD', 'r') as file:
+      currentBranch = file.read()
+    with open(f'.mygit/branches/{currentBranch}', 'r') as file:
+      currentCommit = file.read()
+    with open(f'.mygit/branches/{args.branch}', 'w') as file:
+      file.write(currentCommit)
+  

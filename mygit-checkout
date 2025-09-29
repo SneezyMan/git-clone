@@ -1,0 +1,90 @@
+#!/usr/bin/python3
+# mygit-checkout
+# Written by z5611273 on 10/8/2025
+
+import os
+import sys
+import filecmp
+
+if not os.path.exists('.mygit'):
+  print('mygit-checkout: error: mygit repository directory .mygit not found', file=sys.stderr)
+  exit(1)
+
+if not os.path.exists('.mygit/commits'):
+  print('mygit-checkout: error: this command can not be run until after the first commit', file=sys.stderr)
+  exit(1)
+
+if len(sys.argv) != 2:
+  print('usage: mygit-checkout <branch>', file=sys.stderr)
+  exit(1)
+
+targetBranch = sys.argv[1]
+with open('.mygit/HEAD', 'r') as file:
+  currentBranch = file.read()
+if currentBranch == targetBranch:
+  print(f"Already on '{targetBranch}'", file=sys.stderr)
+  exit(1)  
+
+branchList = os.listdir('.mygit/branches')
+if targetBranch not in branchList:
+  print(f"mygit-checkout: error: unknown branch '{targetBranch}'", file=sys.stderr)
+  exit(1)
+
+with open(f'.mygit/branches/{targetBranch}', 'r') as file:
+  targetCommitId = file.read()
+with open(f'.mygit/branches/{currentBranch}', 'r') as file:
+  currentCommitId = file.read()
+
+# check possibilities for data overwrite in local due to mygit-checkout
+overwriteFiles = []
+for file in os.listdir():
+  if not os.path.isfile(file):
+    continue
+  if (file in os.listdir(f'.mygit/commits/{targetCommitId}') and not filecmp.cmp(f'{file}', f'.mygit/commits/{targetCommitId}/{file}')
+      and not os.path.exists(f'.mygit/commits/{currentCommitId}/{file}')):
+    overwriteFiles.append(file)
+for file in os.listdir('.mygit/index-storage'):
+  if (file in os.listdir(f'.mygit/commits/{targetCommitId}') and not filecmp.cmp(f'.mygit/index-storage/{file}', f'.mygit/commits/{targetCommitId}/{file}')
+      and not os.path.exists(f'.mygit/commits/{currentCommitId}/{file}')):
+    overwriteFiles.append(file)
+
+if len(overwriteFiles) != 0:  
+  print('mygit-checkout: error: Your changes to the following files would be overwritten by checkout:', file=sys.stderr)
+  for file in sorted(set(overwriteFiles)):
+    print(file, file=sys.stderr)
+  exit(1)
+
+currentIndex = os.listdir('.mygit/index-storage')
+ignoreFiles = []
+modified = []
+with open('.mygit/modified', 'r') as file:
+  for line in file:
+    modified.append(line.strip())
+
+for file in currentIndex:
+  if (not filecmp.cmp(f'{file}', f'.mygit/index-storage/{file}', shallow=False)
+      or file in modified):
+    ignoreFiles.append(file)
+    continue
+  os.remove(f'.mygit/index-storage/{file}')
+  os.remove(f'{file}')
+open('.mygit/tracked', 'w').close()
+
+currentWorkDir = os.getcwd()
+targetIndex = os.listdir(f'.mygit/commits/{targetCommitId}')
+for filename in targetIndex:
+  if filename in ignoreFiles:
+    continue
+  with open(f'.mygit/commits/{targetCommitId}/{filename}', 'r') as source:
+    source_content = source.read()
+    with open(f'.mygit/index-storage/{filename}', 'w') as dest:
+      dest.write(source_content)
+    with open(f'{filename}', 'w') as file:
+      file.write(source_content)
+  with open(f'.mygit/tracked', 'a') as file:
+    file.write(f'{filename}\n')
+
+with open('.mygit/HEAD', 'w') as file:
+  file.write(targetBranch)
+
+print(f"Switched to branch '{targetBranch}'")

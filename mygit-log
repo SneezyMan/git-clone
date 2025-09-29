@@ -1,0 +1,39 @@
+#!/usr/bin/python3
+# mygit-log
+# Written by z5611273 on 7/8/2025
+
+import os
+import sys
+
+if not os.path.exists('.mygit'):
+  print('mygit-log: error: mygit repository directory .mygit not found', file=sys.stderr)
+  exit(1)
+
+if len(sys.argv) != 1:
+  print('usage: mygit-log', file=sys.stderr)
+  exit(1)
+
+if not os.path.exists('.mygit/commits'):
+  exit(0)
+
+with open('.mygit/HEAD', 'r') as file:
+  currentBranch = file.read()
+with open(f'.mygit/branches/{currentBranch}', 'r') as file:
+  currentCommit = int(file.read())
+commitNum = currentCommit
+with open(f'.mygit/commit-messages/{commitNum}', 'r') as file:
+  commitMessage = file.read()
+result = [f'{commitNum} {commitMessage}']
+
+while commitNum != 0:
+  with open(f'.mygit/commit-pointers/{commitNum}', 'r') as commitNums:
+    for commitNum in commitNums:
+      commitNum = int(commitNum)
+      with open(f'.mygit/commit-messages/{commitNum}', 'r') as file:
+        commitMessage = file.read()
+      line = f'{commitNum} {commitMessage}'
+      result.append(line)
+
+for commit in result:
+  print(commit, end="")
+exit(0)

@@ -1,0 +1,158 @@
+#!/usr/bin/python3
+# mygit-merge
+# Written by z5611273 on 11/8/2025
+
+import sys
+import os
+import argparse
+import re
+import filecmp
+
+if not os.path.exists('.mygit'):
+  print('mygit-merge: error: mygit repository directory .mygit not found', file=sys.stderr)
+  exit(1)
+
+if not os.path.exists('.mygit/commits'):
+  print('mygit-merge: error: this command can not be run until after the first commit', file=sys.stderr)
+  exit(1)
+
+class ArgumentParser(argparse.ArgumentParser):
+  def error(self, message):
+    if "the following arguments are required: -m/--message" in message:
+      print("mygit-merge: error: empty commit message", file=sys.stderr)
+    elif "argument -m/--message: expected one argument" in message:
+      self.print_usage(sys.stderr)
+      exit(1)
+    else:
+      self.print_usage(sys.stderr)
+    exit(1)
+
+usageString = 'mygit-merge <branch|commit> -m message'
+parser = ArgumentParser(add_help=False, usage=usageString)
+parser.add_argument('branchMerge')
+parser.add_argument('-m', '--message', required=True)
+args = parser.parse_args()
+
+if re.fullmatch(r'[0-9]+', args.branchMerge):
+  isCommit = True
+else:
+  isCommit = False
+
+if isCommit:
+  targetCommit = args.branchMerge
+  if not os.path.exists(f'.mygit/commits/{targetCommit}'):
+    print(f"mygit-merge: error: unknown commit '{targetCommit}'", file=sys.stderr)
+    exit(1)
+else:
+  if not os.path.exists(f'.mygit/branches/{args.branchMerge}'):
+    print(f"mygit-merge: error: unknown branch '{args.branchMerge}'", file=sys.stderr)
+    exit(1)
+  with open(f'.mygit/branches/{args.branchMerge}', 'r') as file:
+    targetCommit = int(file.read())
+with open('.mygit/HEAD', 'r') as file:
+  currentBranch = file.read()
+with open(f'.mygit/branches/{currentBranch}', 'r') as file:
+  currentCommit = int(file.read())
+
+if currentCommit == targetCommit:
+  print('Already up to date')
+  exit(0)
+
+targetAncestors = [targetCommit]
+commitPointer = targetCommit
+while commitPointer != 0:
+  with open(f'.mygit/commit-pointers/{commitPointer}', 'r') as file:
+    commitPointer = int(file.read())
+    targetAncestors.append(commitPointer)
+
+currentAncestors = [currentCommit]
+commitPointer = currentCommit
+while commitPointer != 0:
+  with open(f'.mygit/commit-pointers/{commitPointer}', 'r') as file:
+    commitPointer = int(file.read())
+    currentAncestors.append(commitPointer)
+
+commonCommits = [num for num in targetAncestors if num in currentAncestors]
+commonAncestor = max(commonCommits)
+
+errorFiles = []
+for filename in os.listdir(f'.mygit/commits/{commonAncestor}'):
+  if (os.path.exists(f'.mygit/commits/{currentCommit}/{filename}') 
+      and os.path.exists(f'.mygit/commits/{targetCommit}/{filename}')):
+    if ((not filecmp.cmp(f'.mygit/commits/{currentCommit}/{filename}', f'.mygit/commits/{commonAncestor}/{filename}', shallow=False)
+        and not filecmp.cmp(f'.mygit/commits/{targetCommit}/{filename}', f'.mygit/commits/{commonAncestor}/{filename}', shallow=False))):
+      errorFiles.append(filename)
+
+errorFiles = sorted(errorFiles)
+
+for filename in os.listdir(f'.mygit/commits/{currentCommit}'):
+  if (os.path.exists(f'.mygit/commits/{targetCommit}/{filename}') 
+      and not os.path.exists(f'.mygit/commits/{commonAncestor}/{filename}')
+      and not filecmp.cmp(f'.mygit/commits/{currentCommit}/{filename}', f'.mygit/commits/{targetCommit}/{filename}', shallow=False)):
+    errorFiles.insert(0, 'Merge')
+    break
+
+if len(errorFiles) != 0:
+  print('mygit-merge: error: These files can not be merged:', file=sys.stderr)
+  for filename in errorFiles:
+    print(filename, file=sys.stderr)
+  exit(1)
+
+# fast forward case
+if currentCommit == commonAncestor:
+  with open(f'.mygit/branches/{currentBranch}', 'w') as file:
+    file.write(f'{targetCommit}')
+  
+  for filename in os.listdir(f'.mygit/commits/{targetCommit}'):
+    with open(f'.mygit/commits/{targetCommit}/{filename}', 'r') as source:
+      sourceContent = source.read()
+      with open(f'{filename}', 'w') as target:
+        target.write(sourceContent)
+      with open(f'.mygit/index-storage/{filename}', 'w') as target:
+        target.write(sourceContent)
+  print('Fast-forward: no commit created')
+  exit(0)
+
+addFromCurrent = []
+addFromTarget = []
+for filename in os.listdir(f'.mygit/commits/{currentCommit}'):
+  if not os.path.exists(f'.mygit/commits/{targetCommit}/{filename}'):
+    addFromCurrent.append(filename)
+  else:
+    if not filecmp.cmp(f'.mygit/commits/{commonAncestor}/{filename}', f'.mygit/commits/{currentCommit}/{filename}', shallow=False):
+      addFromCurrent.append(filename)
+    else:
+      addFromTarget.append(filename)
+for filename in os.listdir(f'.mygit/commits/{targetCommit}'):
+  if not os.path.exists(f'.mygit/commits/{currentCommit}/{filename}'):
+    addFromTarget.append(filename)
+
+commitId = len(os.listdir('.mygit/commits'))
+os.mkdir(f'.mygit/commits/{commitId}')
+for filename in addFromCurrent:
+  with open(f'.mygit/commits/{currentCommit}/{filename}', 'r') as source:
+    content = source.read()
+    with open(f'.mygit/commits/{commitId}/{filename}', 'w') as target:
+      target.write(content)
+    with open(f'.mygit/index-storage/{filename}', 'w') as target:
+      target.write(content)
+    with open(filename, 'w') as target:
+      target.write(content)
+for filename in addFromTarget:
+  with open(f'.mygit/commits/{targetCommit}/{filename}', 'r') as source:
+    sourceContent = source.read()
+    with open(f'.mygit/commits/{commitId}/{filename}', 'w') as target:
+      target.write(sourceContent)
+    with open(f'.mygit/index-storage/{filename}', 'w') as target:
+      target.write(sourceContent)
+    with open(f'{filename}', 'w') as target:
+      target.write(sourceContent)
+
+with open(f'.mygit/branches/{currentBranch}', 'w') as file:
+  file.write(f'{commitId}')
+with open(f'.mygit/commit-messages/{commitId}', 'w') as file:
+  file.write(f'{args.message}\n')
+with open(f'.mygit/commit-pointers/{commitId}', 'w') as file:
+  file.write(f'{currentCommit}\n{targetCommit}')
+
+print(f'Committed as commit {commitId}')

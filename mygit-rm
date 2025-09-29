@@ -1,0 +1,102 @@
+#!/usr/bin/python3
+# mygit-rm
+# Written by z5611273 on 7/8/2025
+
+import os
+import sys
+import argparse
+import re
+import filecmp
+
+if not os.path.exists('.mygit'):
+  print('mygit-rm: error: mygit repository directory .mygit not found', file=sys.stderr)
+  exit(1)
+
+class ArgumentParser(argparse.ArgumentParser):
+  def error(self, message):
+    self.print_usage(sys.stderr)
+    exit(1)
+
+usageString = 'usage: mygit-rm [--force] [--cached] <filenames>'
+parser = ArgumentParser(add_help=False, exit_on_error=False, usage=usageString)
+parser.add_argument('--force', action='store_true')
+parser.add_argument('--cached', action='store_true')
+parser.add_argument("filenames", nargs='+')
+args = parser.parse_args()
+
+for filename in args.filenames:
+  if not re.search(r'^\w[-\w\.]*$', filename):
+    print(f"mygit-rm: error: invalid filename '{filename}'", file=sys.stderr)
+    exit(1)
+
+if not args.force:
+  if os.path.exists('.mygit/commits'):
+    latestCommit = max(os.listdir(f'.mygit/commits'), key=int)
+    for filename in args.filenames:
+      if os.path.exists(f'.mygit/commits/{latestCommit}/{filename}'):
+        if (not args.cached
+            and not filecmp.cmp(f'{filename}', f'.mygit/index-storage/{filename}', shallow=False)
+            and filecmp.cmp(f'.mygit/index-storage/{filename}',
+                            f'.mygit/commits/{latestCommit}/{filename}')):
+          print(f"mygit-rm: error: '{filename}' in the "
+                "repository is different to the working file", file=sys.stderr)
+          exit(1)
+        elif (not args.cached
+              and filecmp.cmp(f'{filename}', f'.mygit/index-storage/{filename}', shallow=False)
+              and not filecmp.cmp(f'.mygit/index-storage/{filename}', 
+                                  f'.mygit/commits/{latestCommit}/{filename}')):
+          print(f"mygit-rm: error: '{filename}' has staged changes in the index", file=sys.stderr)
+          exit(1)
+        elif (not filecmp.cmp(f'{filename}', f'.mygit/index-storage/{filename}', shallow=False)
+              and not filecmp.cmp(f'.mygit/index-storage/{filename}',
+                                  f'.mygit/commits/{latestCommit}/{filename}')):
+          print(f"mygit-rm: error: '{filename}' in index is different to both "
+                "the working file and the repository", file=sys.stderr)
+          exit(1)
+      elif not os.path.exists(f'.mygit/commits/{latestCommit}/{filename}'):
+        if (not args.cached
+            and os.path.exists(f'.mygit/index-storage/{filename}')
+            and filecmp.cmp(f'{filename}', f'.mygit/index-storage/{filename}', shallow=False)):
+          print(f"mygit-rm: error: '{filename}' has staged changes in the index", file=sys.stderr)
+          exit(1)
+
+  elif not os.path.exists('.mygit/commits'):
+    if (not filecmp.cmp(f'{filename}', f'.mygit/index-storage/{filename}', shallow=False)):
+      print(f"mygit-rm: error: '{filename}' in index is different to both "
+              "the working file and the repository", file=sys.stderr)
+      exit(1)
+
+for filename in args.filenames:
+  try:
+    os.remove(f'.mygit/index-storage/{filename}')
+  except FileNotFoundError:
+    print(f"mygit-rm: error: '{filename}' is not in the mygit repository", file=sys.stderr)
+    exit(1)
+
+if not args.cached:
+  # remove from currdir
+  for filename in args.filenames:
+    try:
+      os.remove(filename)
+    except FileNotFoundError:
+      print(f"mygit-rm: error: '{filename}' is not in the mygit repository", file=sys.stderr)
+      exit(1)
+
+#with open('.mygit/tracked', 'r') as file:
+#  trackedFiles = file.read().splitlines()
+#for filename in args.filenames:
+#  trackedFiles.remove(filename)
+#with open('.mygit/tracked', 'w') as file:
+#  for name in trackedFiles:
+#    file.write(f'{name}\n')
+  
+for filename in args.filenames:
+  if os.path.exists('.mygit/modified'):
+    with open('.mygit/modified', 'r') as file:
+      content = file.read()
+    if not re.search(rf'\b{filename}\b', content):
+      with open('.mygit/modified', 'a') as file:
+        file.write(f'{filename}\n')
+  else:
+    with open('.mygit/modified', 'w') as file:
+      file.write(f'{filename}\n')

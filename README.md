@@ -45,7 +45,7 @@ Supports local version control of files, with core features of `git` such as `gi
 ---
 
 ## Installation
-Clone this repo into your project directory:
+Clone this repo into a directory with the following commands:
 
 ```bash
 git clone https://github.com/your-username/mygit.git
